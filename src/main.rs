@@ -1,31 +1,27 @@
-use eframe::egui;
+mod ui;
+mod rpc;
 
-#[derive(Default)]
-struct App {}
-
-// impl App {
-//         fn new(cc: &eframe::CreationContext<'_>) -> Self {
-//                 Self::default()
-//         }
-// }
-
-impl eframe::App for App {
-        fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                        ui.heading("ADM");
-                });
-        }
-}
-
-fn main() {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
         let native_opts = eframe::NativeOptions {
-                viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 500.0]),
+                viewport: egui::ViewportBuilder::default()
+                        .with_inner_size([800.0, 600.0])
+                        .with_min_inner_size([400.0, 300.0])
+                        .with_title("ADM")
+                        .with_decorations(false)
+                        .with_minimize_button(true)
+                        .with_maximize_button(true)
+                        .with_close_button(true),
                 ..Default::default()
         };
 
-        _ = eframe::run_native(
+        rpc::Rpc::connect("ws://127.0.0.1:6800/jsonrpc").await?;
+
+        eframe::run_native(
                 "ADM",
                 native_opts,
-                Box::new(|_| Ok(Box::<App>::default()))
-        );
+                Box::new(|_| Ok(Box::<ui::App>::default()))
+        )?;
+
+        Ok(())
 }
