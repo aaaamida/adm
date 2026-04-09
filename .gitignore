@@ -1,1 +1,4 @@
 Session.vim
+.direnv
+.envrc
+target/
