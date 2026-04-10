@@ -1,7 +1,6 @@
-use reqwest::StatusCode;
-
 use crate::rpc::{Download, Rpc};
 
+#[allow(unused)]
 pub enum RpcCommand {
         GetVersion,
         TellActive,
@@ -16,14 +15,14 @@ pub enum RpcCommand {
         UnpauseAllDownloads
 }
 
+#[allow(unused)]
 pub enum RpcResponse {
         CurrentVersion(String),
         ActiveDownloads(Vec<Download>),
         WaitingDownloads(Vec<Download>),
         StoppedDownloads(Vec<Download>),
         DownloadStatus(Download),
-        Gid(String),
-        HttpResponse(StatusCode),
+        // Gid(String),
         Error(String)
 }
 

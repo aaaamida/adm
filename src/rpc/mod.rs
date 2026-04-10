@@ -28,10 +28,11 @@ pub struct Download {
         pub download_speed: String,
         pub files: Vec<Files>,
 
+        // TODO: impl this feature later maybe
         // torrent only
-        pub info_hash: String,
-        pub seeder: bool,
-        pub bittorrent: BitTorrent,
+        // pub info_hash: String,
+        // pub seeder: bool,
+        // pub bittorrent: BitTorrent,
 }
 
 #[allow(unused)]
@@ -41,13 +42,13 @@ pub struct Files {
         pub length: String,
 }
 
-#[allow(unused)]
-#[derive(Deserialize)]
-pub struct BitTorrent {
-        pub creation_date: u64,
-        pub mode: String,
-        pub comment: String,
-}
+// #[allow(unused)]
+// #[derive(Deserialize)]
+// pub struct BitTorrent {
+//         pub creation_date: u64,
+//         pub mode: String,
+//         pub comment: String,
+// }
 
 impl Default for Download {
         fn default() -> Self {
@@ -59,13 +60,13 @@ impl Default for Download {
                         download_speed: "0".into(),
                         files: vec![],
 
-                        info_hash: "".into(),
-                        seeder: false,
-                        bittorrent: BitTorrent {
-                                creation_date: 0u64,
-                                mode: "single".into(),
-                                comment: "".into()
-                        }
+                        // info_hash: "".into(),
+                        // seeder: false,
+                        // bittorrent: BitTorrent {
+                        //         creation_date: 0u64,
+                        //         mode: "single".into(),
+                        //         comment: "".into()
+                        // }
                 }
         }
 }
