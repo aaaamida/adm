@@ -1,3 +1,5 @@
+pub mod worker;
+
 use std::fs::read;
 
 use base64::Engine;
@@ -12,15 +14,24 @@ pub struct Rpc {
         socket: WebSocketStream<MaybeTlsStream<TcpStream>>
 }
 
+// TODO: match the struct members w aria2's download status struct
 #[allow(unused)]
 #[derive(Deserialize)]
 pub struct Download {
         pub gid: String,
+
+        // NOTE: possible values: active, waiting, paused, error, complete, removed
+        // TODO: should probably turn it into an enum idk
         pub status: String,
         pub total_length: String,
         pub completed_length: String,
         pub download_speed: String,
-        pub files: Vec<Files>
+        pub files: Vec<Files>,
+
+        // torrent only
+        pub info_hash: String,
+        pub seeder: bool,
+        pub bittorrent: BitTorrent,
 }
 
 #[allow(unused)]
@@ -28,6 +39,35 @@ pub struct Download {
 pub struct Files {
         pub path: String,
         pub length: String,
+}
+
+#[allow(unused)]
+#[derive(Deserialize)]
+pub struct BitTorrent {
+        pub creation_date: u64,
+        pub mode: String,
+        pub comment: String,
+}
+
+impl Default for Download {
+        fn default() -> Self {
+                Download {
+                        gid: "".into(),
+                        status: "waiting".into(),
+                        total_length: "0".into(),
+                        completed_length: "0".into(),
+                        download_speed: "0".into(),
+                        files: vec![],
+
+                        info_hash: "".into(),
+                        seeder: false,
+                        bittorrent: BitTorrent {
+                                creation_date: 0u64,
+                                mode: "single".into(),
+                                comment: "".into()
+                        }
+                }
+        }
 }
 
 #[allow(unused)]
@@ -45,7 +85,10 @@ impl Rpc {
                         "params": params
                 });
 
-                self.socket.send(Message::Text(req.to_string().into())).await?;
+                self
+                        .socket
+                        .send(Message::Text(req.to_string().into()))
+                        .await?;
 
                 if let Some(Ok(Message::Text(res))) = self.socket.next().await {
                         let parsed: Value = serde_json::from_str(&res)?;
@@ -66,13 +109,18 @@ impl Rpc {
         }
 
         pub async fn tell_waiting(&mut self) -> anyhow::Result<Vec<Download>> {
-                let result = self.send_request("aria2.tellWaiting", json!([])).await?;
+                let result = self.send_request("aria2.tellWaiting", json!([0, 100])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
         pub async fn tell_stopped(&mut self) -> anyhow::Result<Vec<Download>> {
-                let result = self.send_request("aria2.tellStopped", json!([])).await?;
+                let result = self.send_request("aria2.tellStopped", json!([0, 100])).await?;
                 Ok(serde_json::from_value(result)?)
+        }
+
+        // TODO: this should return a struct
+        pub async fn tell_status(&mut self, gid: String) -> anyhow::Result<Download> {
+                todo!()
         }
 
         pub async fn add_uri(&mut self, uri: String) -> anyhow::Result<String> {
@@ -88,5 +136,25 @@ impl Rpc {
 
                 let result = self.send_request("aria2.addTorrent", json!([torrent.as_str()])).await?;
                 Ok(serde_json::from_value(result)?)
+        }
+
+        pub async fn pause_download(&mut self, gid: String) -> anyhow::Result<String> {
+                let result = self.send_request("aria2.pause", json!([gid.as_str()])).await?;
+                Ok(serde_json::from_value(result)?)
+        }
+
+        pub async fn pause_all_downloads(&mut self) -> anyhow::Result<()> {
+                let _ = self.send_request("aria2.pauseAll", json!([])).await?;
+                Ok(())
+        }
+
+        pub async fn unpause_download(&mut self, gid: String) -> anyhow::Result<String> {
+                let result = self.send_request("aria2.unpause", json!([gid.as_str()])).await?;
+                Ok(serde_json::from_value(result)?)
+        }
+
+        pub async fn unpause_all_downloads(&mut self) -> anyhow::Result<()> {
+                let _ = self.send_request("aria2.unpauseAll", json!([])).await?;
+                Ok(())
         }
 }
