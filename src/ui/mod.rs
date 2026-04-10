@@ -1,9 +1,24 @@
+use std::sync::mpsc::{Receiver, Sender};
+
 use eframe::egui;
 
-#[derive(Default)]
-pub struct App {}
+use crate::rpc::worker::{RpcCommand, RpcResponse};
+
+#[allow(unused)]
+pub struct App {
+        sender: Sender<RpcCommand>,
+        receiver: Receiver<RpcResponse>,
+}
 
 impl App {
+        #[allow(unused)]
+        pub fn new(tx: Sender<RpcCommand>, rx: Receiver<RpcResponse>) -> Self {
+                App {
+                        sender: tx,
+                        receiver: rx,
+                }
+        }
+
         fn title_bar(&mut self, ui: &mut egui::Ui) {
                 ui.with_layout( egui::Layout::top_down(egui::Align::Center), |ui| ui.heading("ADM"));
         }
