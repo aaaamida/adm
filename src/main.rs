@@ -10,7 +10,8 @@ async fn main() -> anyhow::Result<()> {
         let native_opts = eframe::NativeOptions {
                 viewport: egui::ViewportBuilder::default()
                         .with_inner_size([800.0, 600.0])
-                        .with_min_inner_size([400.0, 300.0])
+                        .with_min_inner_size([600.0, 300.0])
+                        .with_max_inner_size([1200.0, 900.0])
                         .with_title("ADM")
                         .with_decorations(false)
                         .with_minimize_button(true)
