@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tokio::net::TcpStream;
+use anyhow::{bail, Result};
 
 #[allow(unused)]
 pub struct Rpc {
@@ -26,6 +27,7 @@ pub struct Download {
         pub total_length: String,
         pub completed_length: String,
         pub download_speed: String,
+        pub upload_speed: String,
         pub files: Vec<Files>,
 
         // TODO: impl this feature later maybe
@@ -58,6 +60,7 @@ impl Default for Download {
                         total_length: "0".into(),
                         completed_length: "0".into(),
                         download_speed: "0".into(),
+                        upload_speed: "0".into(),
                         files: vec![],
 
                         // info_hash: "".into(),
@@ -73,12 +76,12 @@ impl Default for Download {
 
 #[allow(unused)]
 impl Rpc {
-        pub async fn connect(url: &str) -> anyhow::Result<Self> {
+        pub async fn connect(url: &str) -> Result<Self> {
                 let (ws, _) = connect_async(url).await?;
                 Ok(Rpc { socket: ws })
         }
 
-        async fn send_request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
+        async fn send_request(&mut self, method: &str, params: Value) -> Result<Value> {
                 let req = json!({
                         "jsonrpc": "2.0",
                         "method": method,
@@ -95,41 +98,42 @@ impl Rpc {
                         let parsed: Value = serde_json::from_str(&res)?;
                         Ok(parsed["result"].clone())
                 } else {
-                        anyhow::bail!("No response from server")
+                        bail!("No response from server")
                 }
         }
 
-        pub async fn get_version(&mut self) -> anyhow::Result<String> {
+        pub async fn get_version(&mut self) -> Result<String> {
                 let result = self.send_request("aria2.getVersion", json!([])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn tell_active(&mut self) -> anyhow::Result<Vec<Download>> {
+        pub async fn tell_active(&mut self) -> Result<Vec<Download>> {
                 let result = self.send_request("aria2.tellActive", json!([])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn tell_waiting(&mut self) -> anyhow::Result<Vec<Download>> {
+        pub async fn tell_waiting(&mut self) -> Result<Vec<Download>> {
                 let result = self.send_request("aria2.tellWaiting", json!([0, 100])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn tell_stopped(&mut self) -> anyhow::Result<Vec<Download>> {
+        pub async fn tell_stopped(&mut self) -> Result<Vec<Download>> {
                 let result = self.send_request("aria2.tellStopped", json!([0, 100])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        // TODO: this should return a struct
-        pub async fn tell_status(&mut self, gid: String) -> anyhow::Result<Download> {
-                todo!()
+        // NOTE: this should return a struct
+        pub async fn tell_status(&mut self, gid: String) -> Result<Download> {
+                let result = self.send_request("aria2.tellStatus", json!([gid.as_str()])).await?;
+                Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn add_uri(&mut self, uri: String) -> anyhow::Result<String> {
+        pub async fn add_uri(&mut self, uri: String) -> Result<String> {
                 let result = self.send_request("aria2.addUri", json!([[uri.as_str()]])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn add_torrent(&mut self, path: impl AsRef<std::path::Path>) -> anyhow::Result<String> {
+        pub async fn add_torrent(&mut self, path: impl AsRef<std::path::Path>) -> Result<String> {
                 use base64::engine::general_purpose::STANDARD as b64;
 
                 let bytes = read(path.as_ref())?;
@@ -139,22 +143,22 @@ impl Rpc {
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn pause_download(&mut self, gid: String) -> anyhow::Result<String> {
+        pub async fn pause_download(&mut self, gid: String) -> Result<String> {
                 let result = self.send_request("aria2.pause", json!([gid.as_str()])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn pause_all_downloads(&mut self) -> anyhow::Result<()> {
+        pub async fn pause_all_downloads(&mut self) -> Result<()> {
                 let _ = self.send_request("aria2.pauseAll", json!([])).await?;
                 Ok(())
         }
 
-        pub async fn unpause_download(&mut self, gid: String) -> anyhow::Result<String> {
+        pub async fn unpause_download(&mut self, gid: String) -> Result<String> {
                 let result = self.send_request("aria2.unpause", json!([gid.as_str()])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
-        pub async fn unpause_all_downloads(&mut self) -> anyhow::Result<()> {
+        pub async fn unpause_all_downloads(&mut self) -> Result<()> {
                 let _ = self.send_request("aria2.unpauseAll", json!([])).await?;
                 Ok(())
         }
