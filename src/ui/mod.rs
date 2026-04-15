@@ -37,7 +37,9 @@ pub struct App {
 
         // gui options
         filter: Filter,
-        on_finish: OnFinish
+        on_finish: OnFinish,
+        show_add_dialog: bool,
+        uri_input: String
 }
 
 impl App {
@@ -52,7 +54,9 @@ impl App {
                         error: None,
 
                         filter: Filter::All,
-                        on_finish: OnFinish::Nothing
+                        on_finish: OnFinish::Nothing,
+                        show_add_dialog: false,
+                        uri_input: "".into(),
                 };
 
                 app.cmd.send(RpcCommand::TellActive).ok();
@@ -83,7 +87,9 @@ impl App {
                 ui.menu_button("Files", |ui| {
                         if ui.button("Add Torrent File...").clicked() {}
                         if ui.button("Add Torrent Link...").clicked() {}
-                        if ui.button("Quit ADM").clicked() {}
+                        if ui.button("Quit ADM").clicked() {
+                                std::process::exit(0);
+                        }
                 });
                 ui.menu_button("Edit", |ui| {
                         if ui.button("Start Downloads").clicked() {}
@@ -105,6 +111,32 @@ impl App {
                                         self.on_finish = OnFinish::Shutdown
                                 }
                         })
+                });
+        }
+
+        fn toolbar(&mut self, ui: &mut egui::Ui) {
+                use egui::Separator;
+
+                ui.set_min_height(60.0);
+
+                ui.horizontal(|ui| {
+                        if ui.button("Add...").clicked() {
+                                self.show_add_dialog = true;
+                        }
+                        ui.add_space(20.0);
+                        ui.add(Separator::default().grow(5.0));
+                        if ui.button("Pause").clicked() {}
+                        ui.add_space(20.0);
+                        ui.add(Separator::default().grow(5.0));
+                        if ui.button("Resume").clicked() {}
+                        ui.add_space(20.0);
+                        ui.add(Separator::default().grow(5.0));
+                        if ui.button("Stop").clicked() {}
+                        ui.add_space(20.0);
+                        ui.add(Separator::default().grow(5.0));
+                        if ui.button("Delete").clicked() {}
+                        ui.add_space(20.0);
+                        ui.add(Separator::default().grow(5.0));
                 });
         }
 
@@ -210,6 +242,28 @@ impl App {
                         })
                 );
         }
+
+        fn add_download_dialog(&mut self, ui: &mut egui::Ui) {
+                egui::Window::new("Add download")
+                        .fixed_size([200.0, 150.0])
+                        .collapsible(false)
+                        .resizable(false)
+                        .show(ui.ctx(), |ui| {
+                                ui.label("URL");
+                                ui.text_edit_singleline(&mut self.uri_input);
+
+                                ui.horizontal(|ui| {
+                                        if ui.button("Add").clicked() {
+                                                self.cmd.send(RpcCommand::AddUri(self.uri_input.clone())).ok();
+                                                self.uri_input.clear();
+                                                self.show_add_dialog = false;
+                                        }
+                                        if ui.button("Cancel").clicked() {
+                                                self.show_add_dialog = false;
+                                        }
+                                })
+                        });
+        }
 }
 
 impl eframe::App for App {
@@ -224,6 +278,11 @@ impl eframe::App for App {
 
                 // menu buttons
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| egui::MenuBar::new().ui(ui, |ui| self.menu_bar(ui)));
+                egui::Panel::top("toolbar").show_inside(ui, |ui| egui::MenuBar::new().ui(ui, |ui| self.toolbar(ui)));
+
+                if self.show_add_dialog {
+                        self.add_download_dialog(ui);
+                }
 
                 // function buttons
                 egui::Panel::left("functions")
