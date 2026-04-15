@@ -17,17 +17,18 @@ pub struct Rpc {
 
 // TODO: match the struct members w aria2's download status struct
 #[allow(unused)]
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Download {
         pub gid: String,
 
         // NOTE: possible values: active, waiting, paused, error, complete, removed
         // TODO: should probably turn it into an enum idk
         pub status: String,
-        pub total_length: String,
-        pub completed_length: String,
-        pub download_speed: String,
-        pub upload_speed: String,
+        pub total_length: Option<String>,
+        pub completed_length: Option<String>,
+        pub download_speed: Option<String>,
+        pub upload_speed: Option<String>,
         pub files: Vec<Files>,
 
         // TODO: impl this feature later maybe
@@ -39,6 +40,7 @@ pub struct Download {
 
 #[allow(unused)]
 #[derive(Deserialize)]
+#[derive(Debug)]
 pub struct Files {
         pub path: String,
         pub length: String,
@@ -57,10 +59,10 @@ impl Default for Download {
                 Download {
                         gid: "".into(),
                         status: "waiting".into(),
-                        total_length: "0".into(),
-                        completed_length: "0".into(),
-                        download_speed: "0".into(),
-                        upload_speed: "0".into(),
+                        total_length: Some("0".into()),
+                        completed_length: Some("0".into()),
+                        download_speed: Some("0".into()),
+                        upload_speed: Some("0".into()),
                         files: vec![],
 
                         // info_hash: "".into(),
@@ -108,23 +110,44 @@ impl Rpc {
         }
 
         pub async fn tell_active(&mut self) -> Result<Vec<Download>> {
-                let result = self.send_request("aria2.tellActive", json!([])).await?;
+                let result = self.send_request("aria2.tellActive", json!([[
+                        "gid", "status", "totalLength", "completedLength",
+                        "downloadSpeed", "uploadSpeed", "files"
+                ]])).await?;
+                if result.is_null() {
+                        return Ok(vec![]);
+                }
                 Ok(serde_json::from_value(result)?)
         }
 
         pub async fn tell_waiting(&mut self) -> Result<Vec<Download>> {
-                let result = self.send_request("aria2.tellWaiting", json!([0, 100])).await?;
+                let result = self.send_request("aria2.tellWaiting", json!([0, 100, [
+                        "gid", "status", "totalLength", "completedLength",
+                        "downloadSpeed", "uploadSpeed", "files"
+                ]])).await?;
+                if result.is_null() {
+                        return Ok(vec![]);
+                }
                 Ok(serde_json::from_value(result)?)
         }
 
         pub async fn tell_stopped(&mut self) -> Result<Vec<Download>> {
-                let result = self.send_request("aria2.tellStopped", json!([0, 100])).await?;
+                let result = self.send_request("aria2.tellStopped", json!([0, 100, [
+                        "gid", "status", "totalLength", "completedLength",
+                        "downloadSpeed", "uploadSpeed", "files"
+                ]])).await?;
+                if result.is_null() {
+                        return Ok(vec![]);
+                }
                 Ok(serde_json::from_value(result)?)
         }
 
         // NOTE: this should return a struct
         pub async fn tell_status(&mut self, gid: String) -> Result<Download> {
-                let result = self.send_request("aria2.tellStatus", json!([gid.as_str()])).await?;
+        let result = self.send_request("aria2.tellStatus", json!([gid.as_str(), [
+                        "gid", "status", "totalLength", "completedLength",
+                        "downloadSpeed", "uploadSpeed", "files"
+                ]])).await?;
                 Ok(serde_json::from_value(result)?)
         }
 
