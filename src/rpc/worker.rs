@@ -16,13 +16,14 @@ pub enum RpcCommand {
 }
 
 #[allow(unused)]
+#[derive(Debug)]
 pub enum RpcResponse {
         CurrentVersion(String),
         ActiveDownloads(Vec<Download>),
         WaitingDownloads(Vec<Download>),
         StoppedDownloads(Vec<Download>),
         DownloadStatus(Download),
-        // Gid(String),
+        Gid(String),
         Error(String)
 }
 
@@ -50,13 +51,13 @@ pub fn spawn_worker(
                                                 };
                                         },
                                         RpcCommand::TellWaiting => {
-                                                match rpc.tell_active().await {
+                                                match rpc.tell_waiting().await {
                                                         Ok(dls) => res_tx.send(RpcResponse::WaitingDownloads(dls)).ok(),
                                                         Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
                                                 };
                                         },
                                         RpcCommand::TellStopped => {
-                                                match rpc.tell_active().await {
+                                                match rpc.tell_stopped().await {
                                                         Ok(dls) => res_tx.send(RpcResponse::StoppedDownloads(dls)).ok(),
                                                         Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
                                                 };
@@ -68,7 +69,10 @@ pub fn spawn_worker(
                                                 };
                                         },
                                         RpcCommand::AddUri(uri) => {
-                                                rpc.add_uri(uri).await.ok();
+                                                match rpc.add_uri(uri).await {
+                                                        Ok(gid) => res_tx.send(RpcResponse::Gid(gid)).ok(),
+                                                        Err(e)  => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
                                         },
                                         RpcCommand::AddTorrent(path) => {
                                                 rpc.add_torrent(path).await.ok();
