@@ -194,7 +194,7 @@ impl App {
                                         ui.label("Size");
                                 });
                                 header.col(|ui| {
-                                        ui.set_min_width(180.0);
+                                        ui.set_min_width(120.0);
                                         ui.label("Progress");
                                 });
                                 header.col(|ui| {
@@ -244,11 +244,17 @@ impl App {
         }
 
         fn add_download_dialog(&mut self, ui: &mut egui::Ui) {
-                egui::Window::new("Add download")
-                        .fixed_size([200.0, 150.0])
+                let title = egui::RichText::new("Add Download")
+                        .size(14.0)
+                        .color(Color32::WHITE);
+
+                egui::Window::new(title)
+                        .fixed_size([300.0, 150.0])
                         .collapsible(false)
                         .resizable(false)
+                        // .default_pos([ui.min_size().x / 2.0, ui.min_size().y / 2.0])
                         .show(ui.ctx(), |ui| {
+                                ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
                                 ui.label("URL");
                                 ui.text_edit_singleline(&mut self.uri_input);
 
