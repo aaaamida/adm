@@ -120,50 +120,43 @@ impl App {
                 ui.set_min_height(60.0);
 
                 ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(20.0, ui.spacing().item_spacing.y);
                         if ui.button("Add...").clicked() {
                                 self.show_add_dialog = true;
                         }
-                        ui.add_space(20.0);
                         ui.add(Separator::default().grow(5.0));
                         if ui.button("Pause").clicked() {}
-                        ui.add_space(20.0);
                         ui.add(Separator::default().grow(5.0));
                         if ui.button("Resume").clicked() {}
-                        ui.add_space(20.0);
                         ui.add(Separator::default().grow(5.0));
                         if ui.button("Stop").clicked() {}
-                        ui.add_space(20.0);
                         ui.add(Separator::default().grow(5.0));
                         if ui.button("Delete").clicked() {}
-                        ui.add_space(20.0);
                         ui.add(Separator::default().grow(5.0));
                 });
         }
 
         fn side_panel(&mut self, ui: &mut egui::Ui) {
+                ui.spacing_mut().item_spacing = egui::vec2(ui.spacing().item_spacing.x, 4.0);
+
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new("Filter").size(14.0));
-                ui.add_space(4.0);
 
                 if ui.selectable_label(self.filter == Filter::All, "All").clicked() {
                         self.filter = Filter::All
                 }
-                ui.add_space(4.0);
 
                 if ui.selectable_label(self.filter == Filter::Active, "Active").clicked() {
                         self.filter = Filter::Active
                 }
-                ui.add_space(4.0);
 
                 if ui.selectable_label(self.filter == Filter::Waiting, "Waiting").clicked() {
                         self.filter = Filter::Waiting
                 }
-                ui.add_space(4.0);
 
                 if ui.selectable_label(self.filter == Filter::Stopped, "Stopped").clicked() {
                         self.filter = Filter::Stopped
                 }
-                ui.add_space(4.0);
         }
 
         fn central_panel(&mut self, ui: &mut egui::Ui) {
