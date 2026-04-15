@@ -1,27 +1,83 @@
 use std::sync::mpsc::{Receiver, Sender};
 
 use eframe::egui;
+use egui::{Color32, Stroke};
 
-use crate::rpc::worker::{RpcCommand, RpcResponse};
+use crate::rpc::{worker::{RpcCommand, RpcResponse}, Download};
+
+#[allow(unused)]
+#[derive(PartialEq)]
+enum Filter {
+        All,
+        Active,
+        Waiting,
+        Stopped,
+        // Error,
+}
+
+#[derive(PartialEq)]
+enum OnFinish {
+        Nothing,
+        Exit,
+        Suspend,
+        Shutdown
+}
 
 #[allow(unused)]
 pub struct App {
-        sender: Sender<RpcCommand>,
-        receiver: Receiver<RpcResponse>,
+        // channels
+        cmd: Sender<RpcCommand>,
+        res: Receiver<RpcResponse>,
+
+        // download statuses
+        active: Vec<Download>,
+        waiting: Vec<Download>,
+        stopped: Vec<Download>,
+        error: Option<String>,
+
+        // gui options
+        filter: Filter,
+        on_finish: OnFinish
 }
 
 impl App {
-        #[allow(unused)]
         pub fn new(tx: Sender<RpcCommand>, rx: Receiver<RpcResponse>) -> Self {
-                App {
-                        sender: tx,
-                        receiver: rx,
+                let app = App {
+                        cmd: tx,
+                        res: rx,
+
+                        active: vec![],
+                        waiting: vec![],
+                        stopped: vec![],
+                        error: None,
+
+                        filter: Filter::All,
+                        on_finish: OnFinish::Nothing
+                };
+
+                app.cmd.send(RpcCommand::TellActive).ok();
+                app.cmd.send(RpcCommand::TellWaiting).ok();
+                app.cmd.send(RpcCommand::TellStopped).ok();
+
+                app
+        }
+
+        fn poll_response(&mut self) {
+                while let Ok(response) = self.res.try_recv() {
+                        match response {
+                                RpcResponse::ActiveDownloads(dl) => self.active = dl,
+                                RpcResponse::WaitingDownloads(dl) => self.waiting = dl,
+                                RpcResponse::StoppedDownloads(dl) => self.stopped = dl,
+                                RpcResponse::Error(e) => self.error = Some(e),
+                                _ => {}
+                        }
                 }
         }
 
-        fn title_bar(&mut self, ui: &mut egui::Ui) {
-                ui.with_layout( egui::Layout::top_down(egui::Align::Center), |ui| ui.heading("ADM"));
-        }
+        // ui stuff here
+        // fn title_bar(&mut self, ui: &mut egui::Ui) {
+        //         ui.with_layout( egui::Layout::top_down(egui::Align::Center), |ui| ui.heading("ADM"));
+        // }
 
         fn menu_bar(&mut self, ui: &mut egui::Ui) {
                 ui.menu_button("Files", |ui| {
@@ -36,40 +92,148 @@ impl App {
                 ui.menu_button("Tools", |ui| {
                         if ui.button("Preferences").clicked() {}
                         ui.menu_button("On Finish...", |ui| {
-                                if ui.button("Do nothing").enabled() {}
-                                if ui.button("Exit program").enabled() {}
-                                if ui.button("Suspend the system").enabled() {}
-                                if ui.button("Shut down the system").enabled() {}
+                                if ui.selectable_label(self.on_finish == OnFinish::Nothing,"Do nothing").enabled() {
+                                        self.on_finish = OnFinish::Nothing
+                                }
+                                if ui.selectable_label(self.on_finish == OnFinish::Exit,"Exit program").enabled() {
+                                        self.on_finish = OnFinish::Exit
+                                }
+                                if ui.selectable_label(self.on_finish == OnFinish::Suspend,"Suspend the system").enabled() {
+                                        self.on_finish = OnFinish::Suspend
+                                }
+                                if ui.selectable_label(self.on_finish == OnFinish::Shutdown,"Shut down the system").enabled() {
+                                        self.on_finish = OnFinish::Shutdown
+                                }
                         })
                 });
         }
 
-        #[allow(unused)]
-        fn central_panel(&mut self, ui: &mut egui::Ui) { }
+        fn side_panel(&mut self, ui: &mut egui::Ui) {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Filter").size(14.0));
+                ui.add_space(4.0);
+
+                if ui.selectable_label(self.filter == Filter::All, "All").clicked() {
+                        self.filter = Filter::All
+                }
+                ui.add_space(4.0);
+
+                if ui.selectable_label(self.filter == Filter::Active, "Active").clicked() {
+                        self.filter = Filter::Active
+                }
+                ui.add_space(4.0);
+
+                if ui.selectable_label(self.filter == Filter::Waiting, "Waiting").clicked() {
+                        self.filter = Filter::Waiting
+                }
+                ui.add_space(4.0);
+
+                if ui.selectable_label(self.filter == Filter::Stopped, "Stopped").clicked() {
+                        self.filter = Filter::Stopped
+                }
+                ui.add_space(4.0);
+        }
+
+        fn central_panel(&mut self, ui: &mut egui::Ui) {
+                use egui_extras::Column;
+
+                let cur_filter = match self.filter {
+                        Filter::All     => &self.active, // TODO: impl "all downloads" filter later
+                        Filter::Active  => &self.active,
+                        Filter::Waiting => &self.waiting,
+                        Filter::Stopped => &self.stopped,
+                };
+
+                #[allow(unused_mut)]
+                egui::ScrollArea::vertical().show(ui, |ui| egui_extras::TableBuilder::new(ui)
+                        .column(Column::auto().resizable(true))
+                        .column(Column::auto().resizable(true))
+                        .column(Column::auto().resizable(true))
+                        .column(Column::auto().resizable(true))
+                        .column(Column::remainder())
+                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                        .header(20.0, |mut header| {
+                                header.col(|ui| {
+                                        ui.set_min_width(180.0);
+                                        ui.label("File Name(s)");
+                                });
+                                header.col(|ui| {
+                                        ui.set_min_width(100.0);
+                                        ui.label("Size");
+                                });
+                                header.col(|ui| {
+                                        ui.set_min_width(180.0);
+                                        ui.label("Progress");
+                                });
+                                header.col(|ui| {
+                                        ui.set_min_width(100.0);
+                                        ui.label("Status");
+                                });
+                                header.col(|ui| {
+                                        ui.set_min_width(100.0);
+                                        ui.label("Down Speed");
+                                });
+                        })
+                        .body(|mut body| {
+                                body.rows(20.0, cur_filter.len(), |mut row| {
+                                        let row_index = row.index();
+                                        let item = cur_filter.get(row_index).unwrap();
+
+                                        let path = item.files.first()
+                                                .map(|f| f.path.as_str())
+                                                .unwrap_or("unknown path.");
+                                        let size = item.files.first()
+                                                .map(|f| f.length.as_str())
+                                                .unwrap_or("unknown size.");
+                                        let status = &item.status;
+                                        // TODO: convert from raw bytes to human readable
+                                        let total_len = &item.total_length;
+                                        let compl_len = &item.completed_length;
+                                        let dl_speed = &item.download_speed;
+
+                                        row.col(|ui| {
+                                                ui.label(path);
+                                        });
+                                        row.col(|ui| {
+                                                ui.label(size);
+                                        });
+                                        row.col(|ui| {
+                                                ui.label(format!("{} / {}", total_len, compl_len));
+                                        });
+                                        row.col(|ui| {
+                                                ui.label(status);
+                                        });
+                                        row.col(|ui| {
+                                                ui.label(dl_speed);
+                                        });
+                                });
+                        })
+                );
+        }
 }
 
 impl eframe::App for App {
         fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+                self.poll_response();
+
+                ui.visuals_mut().selection.bg_fill = Color32::DARK_GRAY;
+                ui.visuals_mut().selection.stroke = Stroke::new(8.0, Color32::WHITE);
+
                 // title bar
-                egui::Panel::top("title_bar").resizable(false).show_inside(ui, |ui| self.title_bar(ui));
+                // egui::Panel::top("title_bar").resizable(false).show_inside(ui, |ui| self.title_bar(ui));
 
                 // menu buttons
                 egui::Panel::top("menu_bar").show_inside(ui, |ui| egui::MenuBar::new().ui(ui, |ui| self.menu_bar(ui)));
 
                 // function buttons
-                // egui::Panel::top("functions")
-                //         .resizable(false)
-                //         .exact_size(60.0)
-                //         .show_inside(ui, |ui| {
-                //                 if ui.button("Add").clicked() {}
-                // });
+                egui::Panel::left("functions")
+                        .resizable(true)
+                        .min_size(80.0)
+                        .max_size(180.0)
+                        .default_size(80.0)
+                        .show_inside(ui, |ui| self.side_panel(ui));
 
                 // main content
                 egui::CentralPanel::default().show_inside(ui, |ui| self.central_panel(ui));
         }
-
-        // #[allow(unused)]
-        // fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        //         todo!()
-        // }
 }
