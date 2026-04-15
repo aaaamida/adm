@@ -39,7 +39,8 @@ pub struct App {
         filter: Filter,
         on_finish: OnFinish,
         show_add_dialog: bool,
-        uri_input: String
+        uri_input: String,
+        last_refresh: std::time::Instant,
 }
 
 impl App {
@@ -53,10 +54,11 @@ impl App {
                         stopped: vec![],
                         error: None,
 
-                        filter: Filter::All,
+                        filter: Filter::Active,
                         on_finish: OnFinish::Nothing,
                         show_add_dialog: false,
                         uri_input: "".into(),
+                        last_refresh: std::time::Instant::now(),
                 };
 
                 app.cmd.send(RpcCommand::TellActive).ok();
@@ -68,11 +70,16 @@ impl App {
 
         fn poll_response(&mut self) {
                 while let Ok(response) = self.res.try_recv() {
+                        println!("[{}] got response {:?}", chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"), response);
                         match response {
                                 RpcResponse::ActiveDownloads(dl) => self.active = dl,
                                 RpcResponse::WaitingDownloads(dl) => self.waiting = dl,
                                 RpcResponse::StoppedDownloads(dl) => self.stopped = dl,
                                 RpcResponse::Error(e) => self.error = Some(e),
+                                RpcResponse::Gid(_) => {
+                                        self.cmd.send(RpcCommand::TellActive).ok();
+                                        self.cmd.send(RpcCommand::TellWaiting).ok();
+                                }
                                 _ => {}
                         }
                 }
@@ -187,49 +194,63 @@ impl App {
                                         ui.label("Size");
                                 });
                                 header.col(|ui| {
-                                        ui.set_min_width(120.0);
-                                        ui.label("Progress");
-                                });
-                                header.col(|ui| {
                                         ui.set_min_width(100.0);
                                         ui.label("Status");
                                 });
                                 header.col(|ui| {
-                                        ui.set_min_width(100.0);
-                                        ui.label("Down Speed");
+                                        ui.set_min_width(150.0);
+                                        ui.label("Progress");
+                                });
+                                header.col(|ui| {
+                                        if self.filter == Filter::Active {
+                                                ui.set_min_width(100.0);
+                                                ui.label("Down Speed");
+                                        }
                                 });
                         })
                         .body(|mut body| {
                                 body.rows(20.0, cur_filter.len(), |mut row| {
+                                        use byte_unit::{Byte, UnitType};
+
                                         let row_index = row.index();
                                         let item = cur_filter.get(row_index).unwrap();
 
                                         let path = item.files.first()
                                                 .map(|f| f.path.as_str())
                                                 .unwrap_or("unknown path.");
+                                        let path = std::path::Path::new(path).file_name().unwrap().to_str().unwrap();
                                         let size = item.files.first()
                                                 .map(|f| f.length.as_str())
                                                 .unwrap_or("unknown size.");
                                         let status = &item.status;
                                         // TODO: convert from raw bytes to human readable
-                                        let total_len = &item.total_length;
-                                        let compl_len = &item.completed_length;
-                                        let dl_speed = &item.download_speed;
+                                        let total_len = &item.total_length.clone().unwrap_or("0".into());
+                                        let compl_len = &item.completed_length.clone().unwrap_or("0".into());
+                                        let dl_speed = &item.download_speed.clone().unwrap_or("0".into());
+
+                                        let f_size = Byte::from_u64(size.parse().unwrap())
+                                                .get_appropriate_unit(UnitType::Decimal);
+                                        let t_len = Byte::from_u64(total_len.parse().unwrap())
+                                                .get_appropriate_unit(UnitType::Decimal);
+                                        let c_len = Byte::from_u64(compl_len.parse().unwrap())
+                                                .get_appropriate_unit(UnitType::Decimal);
 
                                         row.col(|ui| {
                                                 ui.label(path);
                                         });
                                         row.col(|ui| {
-                                                ui.label(size);
-                                        });
-                                        row.col(|ui| {
-                                                ui.label(format!("{} / {}", total_len, compl_len));
+                                                ui.label(format!("{f_size:.2}"));
                                         });
                                         row.col(|ui| {
                                                 ui.label(status);
                                         });
                                         row.col(|ui| {
-                                                ui.label(dl_speed);
+                                                ui.label(format!("{c_len:.2} / {t_len:.2}"));
+                                        });
+                                        row.col(|ui| {
+                                                if self.filter == Filter::Active {
+                                                        ui.label(dl_speed);
+                                                }
                                         });
                                 });
                         })
@@ -268,6 +289,13 @@ impl App {
 impl eframe::App for App {
         fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
                 self.poll_response();
+
+                if self.last_refresh.elapsed().as_secs() >= 1 {
+                        self.cmd.send(RpcCommand::TellActive).ok();
+                        self.cmd.send(RpcCommand::TellWaiting).ok();
+                        self.cmd.send(RpcCommand::TellStopped).ok();
+                        self.last_refresh = std::time::Instant::now();
+                }
 
                 ui.visuals_mut().selection.bg_fill = Color32::DARK_GRAY;
                 ui.visuals_mut().selection.stroke = Stroke::new(8.0, Color32::WHITE);
