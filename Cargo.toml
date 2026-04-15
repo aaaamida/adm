@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 base64 = "0.22.1"
+byte-unit = "5.2.0"
+chrono = "0.4.44"
 eframe = "0.34.1"
 egui = "0.34.1"
 egui_extras = { version = "0.34.1", features = ["all_loaders"] }
