@@ -12,7 +12,10 @@ pub enum RpcCommand {
         PauseDownload(String),
         PauseAllDownloads,
         UnpauseDownload(String),
-        UnpauseAllDownloads
+        UnpauseAllDownloads,
+        RemoveDownload(String),
+        RemoveResult(String),
+        ForceRemoveDownload(String),
 }
 
 #[allow(unused)]
@@ -24,6 +27,7 @@ pub enum RpcResponse {
         StoppedDownloads(Vec<Download>),
         DownloadStatus(Download),
         Gid(String),
+        OK,
         Error(String)
 }
 
@@ -78,17 +82,47 @@ pub fn spawn_worker(
                                                 rpc.add_torrent(path).await.ok();
                                         },
                                         RpcCommand::PauseDownload(gid) => {
-                                                rpc.pause_download(gid).await.ok();
+                                                match rpc.pause_download(gid).await {
+                                                        Ok(gid) => res_tx.send(RpcResponse::Gid(gid)).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok()
+                                                };
                                         },
                                         RpcCommand::UnpauseDownload(gid) => {
-                                                rpc.unpause_download(gid).await.ok();
+                                                match rpc.unpause_download(gid).await {
+                                                        Ok(gid) => res_tx.send(RpcResponse::Gid(gid)).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok()
+                                                };
                                         },
                                         RpcCommand::PauseAllDownloads => {
-                                                rpc.pause_all_downloads().await.ok();
+                                                match rpc.pause_all_downloads().await {
+                                                        Ok(_) => res_tx.send(RpcResponse::OK).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
                                         },
                                         RpcCommand::UnpauseAllDownloads => {
-                                                rpc.unpause_all_downloads().await.ok();
-                                        }
+                                                match rpc.unpause_all_downloads().await {
+                                                        Ok(_) => res_tx.send(RpcResponse::OK).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
+                                        },
+                                        RpcCommand::RemoveDownload(gid) => {
+                                                match rpc.remove_download(gid).await {
+                                                        Ok(_) => res_tx.send(RpcResponse::OK).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
+                                        },
+                                        RpcCommand::RemoveResult(gid) => {
+                                                match rpc.remove_result(gid).await {
+                                                        Ok(_) => res_tx.send(RpcResponse::OK).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
+                                        },
+                                        RpcCommand::ForceRemoveDownload(gid) => {
+                                                match rpc.force_remove_download(gid).await {
+                                                        Ok(_) => res_tx.send(RpcResponse::OK).ok(),
+                                                        Err(e) => res_tx.send(RpcResponse::Error(e.to_string())).ok(),
+                                                };
+                                        },
                                 };
                         }
                 });

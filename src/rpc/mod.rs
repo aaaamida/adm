@@ -185,4 +185,19 @@ impl Rpc {
                 let _ = self.send_request("aria2.unpauseAll", json!([])).await?;
                 Ok(())
         }
+
+        pub async fn remove_download(&mut self, gid: String) -> Result<()> {
+                let _ = self.send_request("aria2.remove", json!([gid.as_str()])).await?;
+                Ok(())
+        }
+
+        pub async fn remove_result(&mut self, gid: String) -> Result<()> {
+                let _ = self.send_request("aria2.removeDownloadResult", json!([gid.as_str()])).await?;
+                Ok(())
+        }
+
+        pub async fn force_remove_download(&mut self, gid: String) -> Result<()> {
+                let _ = self.send_request("aria2.forceRemove", json!([gid.as_str()])).await?;
+                Ok(())
+        }
 }
