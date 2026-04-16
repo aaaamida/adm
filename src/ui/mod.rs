@@ -1,4 +1,4 @@
-use std::sync::mpsc::{Receiver, Sender};
+use std::{collections::HashSet, sync::mpsc::{Receiver, Sender}};
 
 use eframe::egui;
 use egui::{Color32, Stroke};
@@ -39,8 +39,10 @@ pub struct App {
         filter: Filter,
         on_finish: OnFinish,
         show_add_dialog: bool,
+        show_delete_dialog: bool,
         uri_input: String,
         last_refresh: std::time::Instant,
+        selected: HashSet<String>
 }
 
 impl App {
@@ -57,8 +59,10 @@ impl App {
                         filter: Filter::Active,
                         on_finish: OnFinish::Nothing,
                         show_add_dialog: false,
+                        show_delete_dialog: false,
                         uri_input: "".into(),
                         last_refresh: std::time::Instant::now(),
+                        selected: HashSet::new(),
                 };
 
                 app.cmd.send(RpcCommand::TellActive).ok();
@@ -68,9 +72,11 @@ impl App {
                 app
         }
 
+        // BUG:: set the ui to refresh continously instead of refreshing only when the cursor is
+        //       moving
         fn poll_response(&mut self) {
                 while let Ok(response) = self.res.try_recv() {
-                        println!("[{}] got response {:?}", chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"), response);
+                        println!("[{}] got response {:#?}", chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"), response);
                         match response {
                                 RpcResponse::ActiveDownloads(dl) => self.active = dl,
                                 RpcResponse::WaitingDownloads(dl) => self.waiting = dl,
@@ -80,6 +86,7 @@ impl App {
                                         self.cmd.send(RpcCommand::TellActive).ok();
                                         self.cmd.send(RpcCommand::TellWaiting).ok();
                                 }
+                                RpcResponse::OK => (),
                                 _ => {}
                         }
                 }
@@ -128,17 +135,29 @@ impl App {
 
                 ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing = egui::vec2(20.0, ui.spacing().item_spacing.y);
+
                         if ui.button("Add...").clicked() {
                                 self.show_add_dialog = true;
                         }
                         ui.add(Separator::default().grow(5.0));
-                        if ui.button("Pause").clicked() {}
+
+                        if ui.button("Pause").clicked() {
+                                for gid in &self.selected {
+                                        self.cmd.send(RpcCommand::PauseDownload(gid.clone())).ok();
+                                }
+                        }
                         ui.add(Separator::default().grow(5.0));
-                        if ui.button("Resume").clicked() {}
+
+                        if ui.button("Resume").clicked() {
+                                for gid in &self.selected {
+                                        self.cmd.send(RpcCommand::UnpauseDownload(gid.clone())).ok();
+                                }
+                        }
                         ui.add(Separator::default().grow(5.0));
-                        if ui.button("Stop").clicked() {}
-                        ui.add(Separator::default().grow(5.0));
-                        if ui.button("Delete").clicked() {}
+
+                        if ui.button("Delete").clicked() {
+                                self.show_delete_dialog = true;
+                        }
                         ui.add(Separator::default().grow(5.0));
                 });
         }
@@ -166,6 +185,16 @@ impl App {
                 }
         }
 
+        // BUG: as follows:
+        //      - when running w empty downloads in memory,
+        //        adding a download for the first time causes
+        //        the item to appear in Waiting filter instead
+        //        of appearing for a brief moment in Waiting
+        //        then moving to Active, which should be the case.
+        //      - downloads only display in the correct filter
+        //        only when at least one download exists in memory.
+        //      - the only way to fix the incorrect filter display
+        //        is to restart the program.
         fn central_panel(&mut self, ui: &mut egui::Ui) {
                 use egui_extras::Column;
 
@@ -178,6 +207,7 @@ impl App {
 
                 #[allow(unused_mut)]
                 egui::ScrollArea::vertical().show(ui, |ui| egui_extras::TableBuilder::new(ui)
+                        .column(Column::exact(10.0))
                         .column(Column::auto().resizable(true))
                         .column(Column::auto().resizable(true))
                         .column(Column::auto().resizable(true))
@@ -185,6 +215,7 @@ impl App {
                         .column(Column::remainder())
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                         .header(20.0, |mut header| {
+                                header.col(|_| {});
                                 header.col(|ui| {
                                         ui.set_min_width(180.0);
                                         ui.label("File Name(s)");
@@ -234,7 +265,19 @@ impl App {
                                                 .get_appropriate_unit(UnitType::Decimal);
                                         let c_len = Byte::from_u64(compl_len.parse().unwrap())
                                                 .get_appropriate_unit(UnitType::Decimal);
+                                        let dl_speed = Byte::from_u64(dl_speed.parse().unwrap())
+                                                .get_appropriate_unit(UnitType::Decimal);
 
+                                        row.col(|ui| {
+                                                let mut checked = self.selected.contains(&item.gid);
+                                                if ui.checkbox(&mut checked, "").clicked() {
+                                                        if checked {
+                                                                self.selected.insert(item.gid.clone());
+                                                        } else {
+                                                                self.selected.remove(&item.gid);
+                                                        }
+                                                }
+                                        });
                                         row.col(|ui| {
                                                 ui.label(path);
                                         });
@@ -249,7 +292,7 @@ impl App {
                                         });
                                         row.col(|ui| {
                                                 if self.filter == Filter::Active {
-                                                        ui.label(dl_speed);
+                                                        ui.label(format!("{dl_speed:.2}"));
                                                 }
                                         });
                                 });
@@ -284,6 +327,45 @@ impl App {
                                 })
                         });
         }
+
+        fn delete_confirm_dialog(&mut self, ui: &mut egui::Ui) {
+                let title = egui::RichText::new("Delete Confirmation")
+                        .size(14.0)
+                        .color(Color32::WHITE);
+
+                egui::Window::new(title)
+                        .fixed_size([150.0, 100.0])
+                        .resizable(false)
+                        .collapsible(false)
+                        .fixed_pos(ui.globally_used_rect().center())
+                        .show(ui.ctx(), |ui| {
+                                ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
+                                ui.label("Are you sure you want to delete selected items?");
+
+                                ui.horizontal(|ui| {
+                                        if ui.button("Confirm").clicked() {
+                                                for gid in &self.selected {
+                                                        match self.filter {
+                                                                Filter::All     => {
+                                                                        self.cmd.send(RpcCommand::RemoveResult(gid.clone())).ok();
+                                                                        self.cmd.send(RpcCommand::RemoveDownload(gid.clone())).ok();
+                                                                }
+                                                                Filter::Stopped => _ = self.cmd.send(RpcCommand::RemoveResult(gid.clone())),
+                                                                _               => _ = self.cmd.send(RpcCommand::RemoveDownload(gid.clone())),
+                                                        }
+                                                }
+                                                self.selected.clear();
+                                                self.show_delete_dialog = false;
+                                                self.cmd.send(RpcCommand::TellActive).ok();
+                                                self.cmd.send(RpcCommand::TellWaiting).ok();
+                                                self.cmd.send(RpcCommand::TellStopped).ok();
+                                        }
+                                        if ui.button("Cancel").clicked() {
+                                                self.show_delete_dialog = false;
+                                        }
+                                })
+                        });
+        }
 }
 
 impl eframe::App for App {
@@ -309,6 +391,10 @@ impl eframe::App for App {
 
                 if self.show_add_dialog {
                         self.add_download_dialog(ui);
+                }
+
+                if self.show_delete_dialog {
+                        self.delete_confirm_dialog(ui);
                 }
 
                 // function buttons
