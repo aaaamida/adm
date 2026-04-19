@@ -84,10 +84,12 @@ impl Rpc {
         }
 
         async fn send_request(&mut self, method: &str, params: Value) -> Result<Value> {
+                let id = uuid::Uuid::new_v4().to_string();
+
                 let req = json!({
                         "jsonrpc": "2.0",
                         "method": method,
-                        "id": "1",
+                        "id": id,
                         "params": params
                 });
 
@@ -96,11 +98,15 @@ impl Rpc {
                         .send(Message::Text(req.to_string().into()))
                         .await?;
 
-                if let Some(Ok(Message::Text(res))) = self.socket.next().await {
-                        let parsed: Value = serde_json::from_str(&res)?;
-                        Ok(parsed["result"].clone())
-                } else {
-                        bail!("No response from server")
+                loop {
+                        if let Some(Ok(Message::Text(res))) = self.socket.next().await {
+                                let parsed: Value = serde_json::from_str(&res)?;
+                                if parsed["id"] == id {
+                                        return Ok(parsed["result"].clone());
+                                }
+                        } else {
+                                bail!("No response from server")
+                        }
                 }
         }
 
@@ -142,7 +148,6 @@ impl Rpc {
                 Ok(serde_json::from_value(result)?)
         }
 
-        // NOTE: this should return a struct
         pub async fn tell_status(&mut self, gid: String) -> Result<Download> {
         let result = self.send_request("aria2.tellStatus", json!([gid.as_str(), [
                         "gid", "status", "totalLength", "completedLength",

@@ -72,21 +72,25 @@ impl App {
                 app
         }
 
-        // BUG:: set the ui to refresh continously instead of refreshing only when the cursor is
-        //       moving
         fn poll_response(&mut self) {
                 while let Ok(response) = self.res.try_recv() {
                         println!("[{}] got response {:#?}", chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"), response);
+                        // println!("[{}] debug msg", chrono::Local::now().format("%Y-%m-%d | %H:%M:%S"));
                         match response {
-                                RpcResponse::ActiveDownloads(dl) => self.active = dl,
+                                RpcResponse::ActiveDownloads(dl)  => self.active = dl,
                                 RpcResponse::WaitingDownloads(dl) => self.waiting = dl,
                                 RpcResponse::StoppedDownloads(dl) => self.stopped = dl,
                                 RpcResponse::Error(e) => self.error = Some(e),
                                 RpcResponse::Gid(_) => {
                                         self.cmd.send(RpcCommand::TellActive).ok();
                                         self.cmd.send(RpcCommand::TellWaiting).ok();
+                                        self.cmd.send(RpcCommand::TellStopped).ok();
                                 }
-                                RpcResponse::OK => (),
+                                RpcResponse::OK => {
+                                        self.cmd.send(RpcCommand::TellActive).ok();
+                                        self.cmd.send(RpcCommand::TellWaiting).ok();
+                                        self.cmd.send(RpcCommand::TellStopped).ok();
+                                }
                                 _ => {}
                         }
                 }
@@ -185,16 +189,6 @@ impl App {
                 }
         }
 
-        // BUG: as follows:
-        //      - when running w empty downloads in memory,
-        //        adding a download for the first time causes
-        //        the item to appear in Waiting filter instead
-        //        of appearing for a brief moment in Waiting
-        //        then moving to Active, which should be the case.
-        //      - downloads only display in the correct filter
-        //        only when at least one download exists in memory.
-        //      - the only way to fix the incorrect filter display
-        //        is to restart the program.
         fn central_panel(&mut self, ui: &mut egui::Ui) {
                 use egui_extras::Column;
 
@@ -249,10 +243,14 @@ impl App {
                                         let path = item.files.first()
                                                 .map(|f| f.path.as_str())
                                                 .unwrap_or("unknown path.");
-                                        let path = std::path::Path::new(path).file_name().unwrap().to_str().unwrap();
+                                        let path = std::path::Path::new(path)
+                                                .file_name()
+                                                .unwrap_or(std::ffi::OsStr::new("Fetching..."))
+                                                .to_str()
+                                                .unwrap();
                                         let size = item.files.first()
                                                 .map(|f| f.length.as_str())
-                                                .unwrap_or("unknown size.");
+                                                .unwrap_or("? B");
                                         let status = &item.status;
                                         // TODO: convert from raw bytes to human readable
                                         let total_len = &item.total_length.clone().unwrap_or("0".into());
@@ -337,7 +335,7 @@ impl App {
                         .fixed_size([150.0, 100.0])
                         .resizable(false)
                         .collapsible(false)
-                        .fixed_pos(ui.globally_used_rect().center())
+                        // .fixed_pos(ui.globally_used_rect().center())
                         .show(ui.ctx(), |ui| {
                                 ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
                                 ui.label("Are you sure you want to delete selected items?");
@@ -370,6 +368,13 @@ impl App {
 
 impl eframe::App for App {
         fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+                // NOTE: explicitly state when each frame should be drawn.
+                //       this is because the UI only draws the next frame
+                //       when the cursor is moving in the window or a text
+                //       cursor is blinking. 
+                //       also note for future me: refer to the `request_repaint_after`
+                //       docs quirk section, just in case.
+                ui.request_repaint_after_secs(1.0);
                 self.poll_response();
 
                 if self.last_refresh.elapsed().as_secs() >= 1 {
