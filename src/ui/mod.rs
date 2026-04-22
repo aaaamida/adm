@@ -101,10 +101,12 @@ impl App {
         //         ui.with_layout( egui::Layout::top_down(egui::Align::Center), |ui| ui.heading("ADM"));
         // }
 
+        // most of these r just decorations for now.
         fn menu_bar(&mut self, ui: &mut egui::Ui) {
                 ui.menu_button("Files", |ui| {
                         if ui.button("Add Torrent File...").clicked() {}
                         if ui.button("Add Torrent Link...").clicked() {}
+                        ui.separator();
                         if ui.button("Quit ADM").clicked() {
                                 std::process::exit(0);
                         }
@@ -115,6 +117,7 @@ impl App {
                 });
                 ui.menu_button("Tools", |ui| {
                         if ui.button("Preferences").clicked() {}
+                        ui.separator();
                         ui.menu_button("On Finish...", |ui| {
                                 if ui.selectable_label(self.on_finish == OnFinish::Nothing,"Do nothing").enabled() {
                                         self.on_finish = OnFinish::Nothing
@@ -130,6 +133,9 @@ impl App {
                                 }
                         })
                 });
+                ui.menu_button("Help", |ui| {
+                        if ui.button("About...").clicked() {}
+                });
         }
 
         fn toolbar(&mut self, ui: &mut egui::Ui) {
@@ -138,7 +144,13 @@ impl App {
                 ui.set_min_height(60.0);
 
                 ui.horizontal(|ui| {
+                        // use egui::{widgets::Button, Image, include_image, Sense};
+
                         ui.spacing_mut().item_spacing = egui::vec2(20.0, ui.spacing().item_spacing.y);
+
+                        // if Button::image(Image::new(include_image!("../../assets/add.png")))
+                        //         .sense(Sense::click())
+                        //         .atom_ui(ui).clicked() {}
 
                         if ui.button("Add...").clicked() {
                                 self.show_add_dialog = true;
@@ -243,7 +255,7 @@ impl App {
                                         let path = item.files.first()
                                                 .map(|f| f.path.as_str())
                                                 .unwrap_or("unknown path.");
-                                        let path = std::path::Path::new(path)
+                                        let fname = std::path::Path::new(path)
                                                 .file_name()
                                                 .unwrap_or(std::ffi::OsStr::new("Fetching..."))
                                                 .to_str()
@@ -266,8 +278,14 @@ impl App {
                                         let dl_speed = Byte::from_u64(dl_speed.parse().unwrap())
                                                 .get_appropriate_unit(UnitType::Decimal);
 
+                                        let mut checked = self.selected.contains(&item.gid);
+
+                                        match checked {
+                                                true  => row.set_selected(true),
+                                                false => row.set_selected(false),
+                                        }
+
                                         row.col(|ui| {
-                                                let mut checked = self.selected.contains(&item.gid);
                                                 if ui.checkbox(&mut checked, "").clicked() {
                                                         if checked {
                                                                 self.selected.insert(item.gid.clone());
@@ -277,7 +295,15 @@ impl App {
                                                 }
                                         });
                                         row.col(|ui| {
-                                                ui.label(path);
+                                                ui.label(fname).context_menu(|ui| {
+                                                        if ui.button("Open file").clicked() {
+                                                                let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+                                                        }
+                                                        if ui.button("Open in file explorer").clicked() {}
+                                                        if ui.button("Toggle Pause/Resume").clicked() {}
+                                                        if ui.button("Remove from list").clicked() {}
+                                                        if ui.button("Delete file").clicked() {}
+                                                });
                                         });
                                         row.col(|ui| {
                                                 ui.label(format!("{f_size:.2}"));
@@ -385,7 +411,7 @@ impl eframe::App for App {
                 }
 
                 ui.visuals_mut().selection.bg_fill = Color32::DARK_GRAY;
-                ui.visuals_mut().selection.stroke = Stroke::new(8.0, Color32::WHITE);
+                ui.visuals_mut().selection.stroke = Stroke::new(8.0, Color32::LIGHT_GRAY);
 
                 // title bar
                 // egui::Panel::top("title_bar").resizable(false).show_inside(ui, |ui| self.title_bar(ui));
@@ -405,9 +431,8 @@ impl eframe::App for App {
                 // function buttons
                 egui::Panel::left("functions")
                         .resizable(true)
-                        .min_size(80.0)
+                        .min_size(140.0)
                         .max_size(180.0)
-                        .default_size(80.0)
                         .show_inside(ui, |ui| self.side_panel(ui));
 
                 // main content
